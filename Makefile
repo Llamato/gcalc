@@ -1,4 +1,5 @@
 build/main: main.hs
+	mkdir -p build
 	ghc -o build/gcalc main.hs
 	mv main.hi build
 	mv main.o build

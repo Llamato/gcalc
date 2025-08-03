@@ -1,5 +1,3 @@
-import Data.List
-    ( (++), zip, map, length, product, sum, null, drop, head, reverse, isPrefixOf )
 import System.IO ( IO, hFlush, stdout, getLine)
 import GHC.IO.Handle.Internals
 import Text.Printf ( printf )
