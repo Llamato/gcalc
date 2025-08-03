@@ -12,6 +12,8 @@ import Data.Text (splitOn, pack, Text)
 import Control.Exception (try)
 import Data.List
 import Data.Maybe (listToMaybe)
+import Data.Matrix
+
 
 data StackSystem = StackSystem {
     stacks :: M.Map Double [Double],
@@ -20,23 +22,15 @@ data StackSystem = StackSystem {
 
 
 formatSysId :: Double -> Text
-formatSysId id =
-    if floor id == ceiling id then
-        head (splitOn (pack ".") (pack (show id)))
+formatSysId sysid =
+    if floor sysid == ceiling sysid then
+        head (splitOn (pack ".") (pack (show sysid)))
     else
-        pack (show id)
-
-
-push :: [Double] -> Double -> [Double]
-push stack value = value : stack
-
-
-pop :: [Double] -> Double
-pop (value: stack) = value
+        pack (show sysid)
 
 
 getStack :: Double -> StackSystem -> [Double]
-getStack id sys = fromMaybe [] (M.lookup id (stacks sys))
+getStack stackId sys = fromMaybe [] (M.lookup stackId (stacks sys))
 
 
 getCurrentStack :: StackSystem -> [Double]
@@ -48,40 +42,47 @@ updateCurrentStack sys newStack = sys { stacks = M.insert (current sys) newStack
 
 
 switchStack :: StackSystem -> Double -> StackSystem
-switchStack sys id =
-  let currentContents = fromMaybe [] (M.lookup id (stacks sys))
-      newStacks = M.insert id currentContents (stacks sys)
-  in sys { stacks = newStacks, current = id }
+switchStack sys stackId =
+  let currentContents = fromMaybe [] (M.lookup stackId (stacks sys))
+      newStacks = M.insert stackId currentContents (stacks sys)
+  in sys { stacks = newStacks, current = stackId }
 
 
 mergeStacks :: StackSystem -> Double -> StackSystem
-mergeStacks sys id = updateCurrentStack sys (getStack id sys ++ getCurrentStack sys)
+mergeStacks sys stackId = updateCurrentStack sys (getStack stackId sys ++ getCurrentStack sys)
 
 
 stackAdd :: StackSystem -> Double -> StackSystem
-stackAdd sys id = updateCurrentStack sys (zipWith (+) (getStack id sys) (getCurrentStack sys))
+stackAdd sys stackId = updateCurrentStack sys (zipWith (+) (getStack stackId sys) (getCurrentStack sys))
 
 
 stackProduct :: StackSystem -> Double -> StackSystem
-stackProduct sys id = updateCurrentStack sys (zipWith (*) (getStack id sys) (getCurrentStack sys))
+stackProduct sys stackId = updateCurrentStack sys (zipWith (*) (getStack stackId sys) (getCurrentStack sys))
 
 
 stackDivision :: StackSystem -> Double -> StackSystem
-stackDivision sys id = updateCurrentStack sys (zipWith (/) (getStack id sys) (getCurrentStack sys))
+stackDivision sys stackId = updateCurrentStack sys (zipWith (/) (getStack stackId sys) (getCurrentStack sys))
 
 
 stackDotProduct :: StackSystem -> Double -> StackSystem
-stackDotProduct sys id = updateCurrentStack sys [sum (getCurrentStack (stackProduct sys id))]
+stackDotProduct sys stackId = updateCurrentStack sys [sum (getCurrentStack (stackProduct sys stackId))]
 
 
 stackCrossProduct :: StackSystem -> Double -> StackSystem
-stackCrossProduct sys id = updateCurrentStack sys (drop 3 sourceStack ++ [aVec!!1 * bVec!!2 - aVec!!2 * bVec!!1, aVec!!2 * bVec!!0 - aVec!!0 * bVec!!2, aVec!!0 * bVec!!1 - aVec!!1 * bVec!!0])
+stackCrossProduct sys stackId = updateCurrentStack sys (drop 3 sourceStack ++ [aVec!!1 * bVec!!2 - aVec!!2 * bVec!!1, aVec!!2 * bVec!!0 - aVec!!0 * bVec!!2, aVec!!0 * bVec!!1 - aVec!!1 * bVec!!0])
     where
-        sourceStack = getStack id sys
+        sourceStack = getStack stackId sys
         targetStack = getCurrentStack sys
         aVec = take 3 sourceStack
         bVec = take 3 targetStack
 
+
+makeMatrix :: [Double] -> Matrix Double
+makeMatrix stack = matrix columns rows $ \(r, c) -> mDataArray!!((r-1)*columns+(c-1))
+    where
+        columns = round (head stack)
+        rows = round (stack!!1)
+        mDataArray = drop 2 stack
 
 putStackLn :: [Double] -> IO ()
 putStackLn [] = return ()
@@ -90,17 +91,39 @@ putStackLn stack = mapM_ printItem (zip [0..length stack] stack)
         printItem (i, x) = printf "%i: %f\n" i x
 
 
-add, subtract, multiply, divide, swap, scale, power, sign, roll, duplicate :: [Double] -> [Double]
+add, subtract, multiply, divide, swap, scale, power, sign, roll, duplicate, determinant :: [Double] -> [Double]
 add         (x:y:xs) = (y+x) : xs
+add         _       = [] 
+
 subtract    (x:y:xs) = (y-x) : xs
+subtract    _       = []
+
 multiply    (x:y:xs) = (y*x) : xs
+multiply    _       = []
+
 divide      (x:y:xs) = (y/x) : xs
+divide      _       = []
+
 sign        (x:xs) = (x*(-1)) : xs
+sign        _       = []
+
 swap        (x:y:xs) = [y,x] ++ xs
+swap        _       = []
+
 roll        (x:xs) = xs ++ [x]
+roll        _       = []
+
 duplicate   (x:xs) = x : x : xs
-scale       (x:xs) = map  (x *) xs
+duplicate   _       = []
+
 power       (x:y:xs) = x**y : xs
+power       _       = []
+
+scale       (x:xs) = map  (x *) xs
+scale       _       = []
+
+determinant (x:y:xs) = detLU (makeMatrix (x : y : xs)) : drop (round x * round y) xs
+determinant _       = []
 
 
 processCmd :: [Double] -> String -> IO [Double]
@@ -114,8 +137,9 @@ processCmd stack cmd
         | cmd == "rol" = return (roll stack)
         | cmd == "dup" = return (duplicate stack)
         | cmd == "pow" = return (power stack)
-        | cmd == "scale" = return (scale stack)
         | cmd == "product" = return [product stack]
+        | cmd == "scale" = return (scale stack)
+        | cmd == "det" = return (determinant stack)
         | cmd == "sum" = return [sum stack]
         | cmd == "d" = return (drop 1 stack)
         | cmd == "cls" = return []
@@ -147,11 +171,11 @@ processSysCmd sys cmd
 normalizeInput :: String -> String
 normalizeInput istr
     | null istr = istr
-    | head str == '.' = '0' : str
-    | otherwise = str
+    | head sstr == '.' = '0' : sstr
+    | otherwise = sstr
     where
-        str = replace ',' '.' istr
-        replace old new str = map (\c -> if c == old then new else c) istr
+        sstr = replace ',' '.' istr
+        replace old new _ = map (\c -> if c == old then new else c) istr
 
 
 ipo :: StackSystem -> IO ()

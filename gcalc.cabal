@@ -75,6 +75,7 @@ executable gcalc
                     , text ^>=2.0.2
                     , containers ^>=0.6.7
                     , process ^>=1.6.19.0
+                    , matrix ^>=0.3.6.4
 
 
     -- Directories containing source files.
