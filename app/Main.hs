@@ -6,12 +6,11 @@ import Data.Text.Lazy.Read
 import System.Process
 import Prelude hiding (subtract)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.IntMap.Merge.Lazy (merge)
 import Data.Text (splitOn, pack, Text)
 import Control.Exception (try)
 import Data.List
-import Data.Maybe (listToMaybe)
 import Data.Matrix
 
 
@@ -23,7 +22,7 @@ data StackSystem = StackSystem {
 
 formatSysId :: Double -> Text
 formatSysId sysid =
-    if floor sysid == ceiling sysid then
+    if  floor sysid == ceiling sysid then
         head (splitOn (pack ".") (pack (show sysid)))
     else
         pack (show sysid)
@@ -77,12 +76,37 @@ stackCrossProduct sys stackId = updateCurrentStack sys (drop 3 sourceStack ++ [a
         bVec = take 3 targetStack
 
 
-makeMatrix :: [Double] -> Matrix Double
-makeMatrix stack = matrix columns rows $ \(r, c) -> mDataArray!!((r-1)*columns+(c-1))
+makeMatrixFromStackElements :: Int -> Int -> [Double] -> Matrix Double
+makeMatrixFromStackElements columns rows stack = matrix columns rows $ \(r, c) -> stack!!((r-1)*columns+(c-1))
+
+
+deleteN :: Int -> [a] -> [a]
+deleteN _ []     = []
+deleteN i (front:rest)
+   | i == 0    = rest
+   | otherwise = front : deleteN (i-1) rest
+
+removeMatrixRow :: Int -> Matrix a -> Matrix a
+removeMatrixRow i mat = fromLists $ reverse $ foldl (\acc c -> if c == i then acc else toList (rowVector (getRow c mat)) : acc) [] [1.. nrows mat]
+
+
+removeMatrixColumn :: Int -> Matrix a -> Matrix a
+removeMatrixColumn j mat = fromLists $ map (deleteN (j-1)) (toLists mat)
+
+
+matrixDeterminant :: Matrix Double -> Double
+matrixDeterminant mat
+  | ncols mat /= nrows mat = 0
+  | ncols mat == 1 = sum mat
+  | ncols mat == 2 = a*d-b*c
+  | otherwise = foldl (\acc (i, j) -> if j == 1 then acc + (-1)^(i+j) * (mat ! (i, j)) * matrixDeterminant (removeMatrixRow i (removeMatrixColumn j mat)) else acc) 0 indices
     where
-        columns = round (head stack)
-        rows = round (stack!!1)
-        mDataArray = drop 2 stack
+      a = getElem 1 1 mat
+      b = getElem 2 1 mat
+      c = getElem 1 2 mat
+      d = getElem 2 2 mat
+      indices = [(i, j) | i <- [1.. nrows mat], j <- [1.. ncols mat]]
+
 
 putStackLn :: [Double] -> IO ()
 putStackLn [] = return ()
@@ -93,7 +117,7 @@ putStackLn stack = mapM_ printItem (zip [0..length stack] stack)
 
 add, subtract, multiply, divide, swap, scale, power, sign, roll, duplicate, determinant :: [Double] -> [Double]
 add         (x:y:xs) = (y+x) : xs
-add         _       = [] 
+add         _       = []
 
 subtract    (x:y:xs) = (y-x) : xs
 subtract    _       = []
@@ -122,7 +146,7 @@ power       _       = []
 scale       (x:xs) = map  (x *) xs
 scale       _       = []
 
-determinant (x:y:xs) = detLU (makeMatrix (x : y : xs)) : drop (round x * round y) xs
+determinant (x:xs) = matrixDeterminant (makeMatrixFromStackElements (round x) (round x) xs) : drop (round (x**2)) xs
 determinant _       = []
 
 
