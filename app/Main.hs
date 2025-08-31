@@ -115,7 +115,7 @@ putStackLn stack = mapM_ printItem (zip [0..length stack] stack)
         printItem (i, x) = printf "%i: %f\n" i x
 
 
-add, subtract, multiply, divide, swap, scale, power, sign, roll, duplicate, determinant :: [Double] -> [Double]
+add, subtract, multiply, divide, swap, scale, power, sroot, oroot, sign, roll, duplicate, determinant :: [Double] -> [Double]
 add         (x:y:xs) = (y+x) : xs
 add         _       = []
 
@@ -143,6 +143,12 @@ duplicate   _       = []
 power       (x:y:xs) = x**y : xs
 power       _       = []
 
+oroot        (x:y:xs) = y**(1/x) : xs
+oroot        _       = []
+
+sroot        (x:xs) = sqrt x : xs
+sroot        _       = []
+
 scale       (x:xs) = map  (x *) xs
 scale       _       = []
 
@@ -161,6 +167,8 @@ processCmd stack cmd
         | cmd == "rol" = return (roll stack)
         | cmd == "dup" = return (duplicate stack)
         | cmd == "pow" = return (power stack)
+        | cmd == "sqrt" = return (sroot stack)
+        | cmd == "rt" = return (oroot stack)
         | cmd == "product" = return [product stack]
         | cmd == "scale" = return (scale stack)
         | cmd == "det" = return (determinant stack)
