@@ -1,6 +1,6 @@
 # Gcalc
 
-A multisteck terminal based scientific rpn calculator with functions specifically tailored to physics applications.
+A multistack terminal based scientific rpn calculator with functions specifically tailored to physics applications.
 
 ## Core principles of operation
 The Reverse polish Notation (RPN) system works traditionally by storing values to perform calculations on in so called registers. The operation to be performed on the contents of registers is specified after all required input values have been placed in registers. With the specific register a value is stored in denoting it's role in a calculation to be performed.
