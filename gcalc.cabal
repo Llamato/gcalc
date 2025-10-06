@@ -23,7 +23,7 @@ name:               gcalc
 version:            0.1.0.0
 
 -- A short (one-line) description of the package.
-synopsis:           An RPN calculator I am writing to teach myself haskell
+synopsis:          A multisteck terminal based scientific rpn calculator with functions specifically tailored to physics applications.
 
 -- A longer description of the package.
 -- description:
