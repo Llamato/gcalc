@@ -1,5 +1,5 @@
 {
-  description = "An attempt at a simple nix dev shell and build script";
+  description = "gcalc an RPN calculator written in haskell";
   inputs.nixpkgs-unstable.url = "github:nixos/nixpkgs/nixpkgs-unstable";
 
   outputs = { self, nixpkgs-unstable }:

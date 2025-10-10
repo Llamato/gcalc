@@ -1,31 +1,30 @@
-import System.IO ( IO, hFlush, stdout, getLine)
-import GHC.IO.Handle.Internals
+import System.IO ( hFlush, stdout)
 import Text.Printf ( printf )
 import Text.Read ( readMaybe )
-import Data.Text.Lazy.Read
-import System.Process
-import Prelude hiding (subtract)
+import Prelude hiding (subtract, error)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe, listToMaybe)
-import Data.IntMap.Merge.Lazy (merge)
-import Data.Text (splitOn, pack, Text)
-import Control.Exception (try)
-import Data.List
+import Data.Maybe (fromMaybe)
+import Data.Text (Text, pack, takeWhile)
 import Data.Matrix
-
+import System.Environment (getArgs)
+import Control.Monad (forM_)
 
 data StackSystem = StackSystem {
     stacks :: M.Map Double [Double],
     current :: Double
 }
 
+data CalcError =
+    NotEnoughElements String Int Int
+  | DivisionByZero
+  | NegativeSqrt
+  | ZeroRoot
+  | EmptyStack
+  | UnknownCommand String
+  deriving (Show)
 
 formatSysId :: Double -> Text
-formatSysId sysid =
-    if  floor sysid == ceiling sysid then
-        head (splitOn (pack ".") (pack (show sysid)))
-    else
-        pack (show sysid)
+formatSysId sysid = Data.Text.takeWhile (/= '.') (pack $ show sysid)
 
 
 getStack :: Double -> StackSystem -> [Double]
@@ -86,6 +85,7 @@ deleteN i (front:rest)
    | i == 0    = rest
    | otherwise = front : deleteN (i-1) rest
 
+
 removeMatrixRow :: Int -> Matrix a -> Matrix a
 removeMatrixRow i mat = fromLists $ reverse $ foldl (\acc c -> if c == i then acc else toList (rowVector (getRow c mat)) : acc) [] [1.. nrows mat]
 
@@ -115,89 +115,105 @@ putStackLn stack = mapM_ printItem (zip [0..length stack] stack)
         printItem (i, x) = printf "%i: %f\n" i x
 
 
-add, subtract, multiply, divide, swap, scale, power, sroot, oroot, sign, roll, duplicate, determinant :: [Double] -> [Double]
-add         (x:y:xs) = (y+x) : xs
-add         _       = []
+add, subtract, multiply, divide, swap, scale, power, sroot, oroot, sign, roll, duplicate, determinant :: [Double] -> Either CalcError [Double]
+add         (x:y:xs) = Right ((y+x) : xs)
+add         xs       = Right xs
 
-subtract    (x:y:xs) = (y-x) : xs
-subtract    _       = []
+subtract    (x:y:xs) = Right ((y-x) : xs)
+subtract    xs       = Right xs
 
-multiply    (x:y:xs) = (y*x) : xs
-multiply    _       = []
+multiply    (x:y:xs) = Right ((y*x) : xs)
+multiply    xs       = Right xs
 
-divide      (x:y:xs) = (y/x) : xs
-divide      _       = []
+divide      (x:y:xs) = Right ((y/x) : xs)
+divide      (0:_)    = Left DivisionByZero
+divide      xs       = Right xs
 
-sign        (x:xs) = (x*(-1)) : xs
-sign        _       = []
+sign        (x:xs) = Right ((x*(-1)) : xs)
+sign        xs       = Right xs
 
-swap        (x:y:xs) = [y,x] ++ xs
-swap        _       = []
+swap        (x:y:xs) = Right ([y,x] ++ xs)
+swap        xs       = Right xs
 
-roll        (x:xs) = xs ++ [x]
-roll        _       = []
+roll        (x:xs) = Right (xs ++ [x])
+roll        xs       = Right xs
 
-duplicate   (x:xs) = x : x : xs
-duplicate   _       = []
+duplicate   (x:xs) = Right (x : x : xs)
+duplicate   xs       = Right xs
 
-power       (x:y:xs) = x**y : xs
-power       _       = []
+power        (x:y:xs) = Right (x**y : xs)
+power        xs       = Right xs
 
-oroot        (x:y:xs) = y**(1/x) : xs
-oroot        _       = []
+oroot        (x:y:xs) = Right (y**(1/x) : xs)
+oroot        xs       = Right xs
 
-sroot        (x:xs) = sqrt x : xs
-sroot        _       = []
+sroot        (x:xs)   = Right (sqrt x : xs)
+sroot        xs       = Right xs
 
-scale       (x:xs) = map  (x *) xs
-scale       _       = []
+scale       (x:xs)   = Right (map  (x *) xs)
+scale       xs       = Right xs
 
-determinant (x:xs) = matrixDeterminant (makeMatrixFromStackElements (round x) (round x) xs) : drop (round (x**2)) xs
-determinant _       = []
+determinant (x:xs)   = Right (matrixDeterminant (makeMatrixFromStackElements (round x) (round x) xs) : drop (round (x**2)) xs)
+determinant xs       = Right xs
 
 
 processCmd :: [Double] -> String -> IO [Double]
 processCmd stack cmd
-        | cmd == "+" = return (add stack)
-        | cmd == "-" = return (subtract stack)
-        | cmd == "*" = return (multiply stack)
-        | cmd == "/" = return (divide stack)
-        | cmd == "n" = return (sign stack)
-        | cmd == "swp" = return (swap stack)
-        | cmd == "rol" = return (roll stack)
-        | cmd == "dup" = return (duplicate stack)
-        | cmd == "pow" = return (power stack)
-        | cmd == "sqrt" = return (sroot stack)
-        | cmd == "rt" = return (oroot stack)
-        | cmd == "product" = return [product stack]
-        | cmd == "scale" = return (scale stack)
-        | cmd == "det" = return (determinant stack)
-        | cmd == "sum" = return [sum stack]
-        | cmd == "d" = return (drop 1 stack)
-        | cmd == "cls" = return []
-        | cmd == "p" = do
-            putStackLn (reverse stack)
-            return stack
-        | otherwise = do
-            return stack
+    | cmd == "p" = do
+        putStackLn (reverse stack)
+        return stack
+    | otherwise =
+        case runCmd stack cmd of
+            Left error -> do
+                putStrLn $ "Error: " ++ show error
+                return stack
+            Right newStack -> return newStack
 
 
-processSysCmd :: StackSystem -> String -> IO StackSystem
-processSysCmd sys cmd
-    | cmd == "switch" = return (switchStack currentSystem stackId)
-    | cmd == "merge" = return (mergeStacks currentSystem stackId)
-    | cmd == "sadd" = return (stackAdd currentSystem stackId)
-    | cmd == "sproduct" = return (stackProduct currentSystem stackId)
-    | cmd == "sdiv" = return (stackDivision currentSystem stackId)
-    | cmd == "sdot" = return (stackDotProduct currentSystem stackId)
-    | cmd == "scross" = return (stackCrossProduct currentSystem stackId)
-    | otherwise = do
-        newStack <- processCmd currentStack cmd
-        return (updateCurrentStack sys newStack)
-    where
-        currentStack = getCurrentStack sys
-        currentSystem = updateCurrentStack sys (drop 1 currentStack)
-        stackId = head currentStack
+runCmd :: [Double] -> String -> Either CalcError [Double]
+runCmd stack cmd = case cmd of
+        "+" -> add stack
+        "-" -> subtract stack
+        "*" -> multiply stack
+        "/" -> divide stack
+        "n" -> sign stack
+        "swp" -> swap stack
+        "rol" -> roll stack
+        "dup" -> duplicate stack
+        "pow" -> power stack
+        "sqrt" -> sroot stack
+        "rt" -> oroot stack
+        "product" -> Right [product stack]
+        "scale" -> scale stack
+        "det" -> determinant stack
+        "sum" -> Right [sum stack]
+        "d" -> Right (drop 1 stack)
+        "cls" -> return []
+        "" -> Right stack
+        unknown -> Left (UnknownCommand unknown)
+
+
+
+processSysCmd :: StackSystem -> String -> IO (Either CalcError StackSystem)
+processSysCmd sys cmd = let currentStack = getCurrentStack sys in
+            if not (null currentStack) then
+                let
+                    currentSystem = updateCurrentStack sys (drop 1 currentStack)
+                    stackId = head currentStack
+                in
+                case cmd of
+                    "switch" -> return $ Right (switchStack currentSystem stackId)
+                    "merge" -> return $ Right (mergeStacks currentSystem stackId)
+                    "sadd" -> return $ Right (stackAdd currentSystem stackId)
+                    "sproduct" -> return $ Right (stackProduct currentSystem stackId)
+                    "sdiv" -> return $ Right (stackDivision currentSystem stackId)
+                    "sdot" -> return $ Right (stackDotProduct currentSystem stackId)
+                    "scross" -> return $ Right (stackCrossProduct currentSystem stackId)
+                    _ -> do
+                        newStack <- processCmd currentStack cmd
+                        return $ Right (updateCurrentStack sys newStack)
+            else
+                return $ Left (NotEnoughElements cmd 2 1)
 
 
 normalizeInput :: String -> String
@@ -221,11 +237,26 @@ ipo sys = do
                 ipo (updateCurrentStack sys (num : stack))
             Nothing -> do
                 newStackSystem <- processSysCmd sys istr
-                ipo newStackSystem
+                case newStackSystem of
+                    Left error -> if null istr then ipo sys
+                        else do
+                            putStrLn $ "Error: " ++ show error
+                            ipo sys
+                    Right newsys -> ipo newsys 
 
+
+parseCommandLineArgument :: String -> IO ()
+parseCommandLineArgument arg
+    | arg == "--help" = do
+        putStrLn "help"
+    | otherwise = do
+        putStr "Unknown argument "
+        putStrLn arg
 
 main :: IO ()
-main = ipo StackSystem {
-            stacks = M.singleton 0 [],
-            current = 0
-        }
+main = do
+    args <- getArgs
+    case args of
+        [arg] -> parseCommandLineArgument arg
+        [] -> ipo StackSystem { stacks = M.singleton 0 [], current = 0 }
+        _ -> forM_ args parseCommandLineArgument
