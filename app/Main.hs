@@ -4,7 +4,7 @@ import Text.Read ( readMaybe )
 import Prelude hiding (subtract, error)
 import qualified Data.Map as M
 import Data.Maybe (fromMaybe)
-import Data.Text (Text, pack, takeWhile)
+import Data.Text (Text, pack, takeWhile, length, splitOn)
 import Data.Matrix
 import System.Environment (getArgs)
 import Control.Monad (forM_)
@@ -87,7 +87,7 @@ deleteN i (front:rest)
 
 
 removeMatrixRow :: Int -> Matrix a -> Matrix a
-removeMatrixRow i mat = fromLists $ reverse $ foldl (\acc c -> if c == i then acc else toList (rowVector (getRow c mat)) : acc) [] [1.. nrows mat]
+removeMatrixRow i mat = fromLists . reverse $ foldl (\acc c -> if c == i then acc else toList (rowVector (getRow c mat)) : acc) [] [1.. nrows mat]
 
 
 removeMatrixColumn :: Int -> Matrix a -> Matrix a
@@ -107,15 +107,24 @@ matrixDeterminant mat
       d = getElem 2 2 mat
       indices = [(i, j) | i <- [1.. nrows mat], j <- [1.. ncols mat]]
 
+decimalPlaces :: Double -> Int
+decimalPlaces x = Data.Text.length . last $ splitOn (pack ".") (pack $ show x)
+
+hcf :: Double -> Double -> Double
+hcf a b = let 
+    scaleFactor = 10 ^ (max (decimalPlaces a) (decimalPlaces b))
+    scaledA = round (a * scaleFactor)
+    scaledB = round (b * scaleFactor)
+    in fromIntegral ((Prelude.gcd scaledA scaledB) :: Integer) / scaleFactor
 
 putStackLn :: [Double] -> IO ()
 putStackLn [] = return ()
-putStackLn stack = mapM_ printItem (zip [0..length stack] stack)
+putStackLn stack = mapM_ printItem (zip [0.. Prelude.length stack] stack)
     where
         printItem (i, x) = printf "%i: %f\n" i x
 
 
-add, subtract, multiply, divide, swap, scale, power, sroot, oroot, sign, roll, duplicate, determinant :: [Double] -> Either CalcError [Double]
+add, subtract, multiply, divide, sign, swap, roll, scale, power, oroot, sroot, gcd, duplicate, determinant :: [Double] -> Either CalcError [Double]
 add         (x:y:xs) = Right ((y+x) : xs)
 add         xs       = Right xs
 
@@ -141,14 +150,17 @@ roll        xs       = Right xs
 duplicate   (x:xs) = Right (x : x : xs)
 duplicate   xs       = Right xs
 
-power        (x:y:xs) = Right (x**y : xs)
-power        xs       = Right xs
+power       (x:y:xs) = Right (x**y : xs)
+power       xs       = Right xs
 
-oroot        (x:y:xs) = Right (y**(1/x) : xs)
-oroot        xs       = Right xs
+oroot       (x:y:xs) = Right (y**(1/x) : xs)
+oroot       xs       = Right xs
 
-sroot        (x:xs)   = Right (sqrt x : xs)
-sroot        xs       = Right xs
+sroot       (x:xs)   = Right (sqrt x : xs)
+sroot       xs       = Right xs
+
+gcd         (x:y:xs) = Right (hcf x y : xs)
+gcd         (xs)     = Right xs
 
 scale       (x:xs)   = Right (map  (x *) xs)
 scale       xs       = Right xs
@@ -182,6 +194,7 @@ runCmd stack cmd = case cmd of
         "dup" -> duplicate stack
         "pow" -> power stack
         "sqrt" -> sroot stack
+        "gcd" -> Main.gcd stack
         "rt" -> oroot stack
         "product" -> Right [product stack]
         "scale" -> scale stack
@@ -229,7 +242,7 @@ normalizeInput istr
 ipo :: StackSystem -> IO ()
 ipo sys = do
         let stack = getCurrentStack sys
-        printf "%s:%i:" (formatSysId (current sys)) (length stack)
+        printf "%s:%i:" (formatSysId (current sys)) (Prelude.length stack)
         hFlush stdout
         istr <- getLine
         case readMaybe (normalizeInput istr) of
