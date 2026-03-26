@@ -1,13 +1,19 @@
+{-# LANGUAGE BlockArguments #-}
 import System.IO ( hFlush, stdout)
 import Text.Printf ( printf )
 import Text.Read ( readMaybe )
 import Prelude hiding (subtract, error)
 import qualified Data.Map as M
-import Data.Maybe (fromMaybe)
-import Data.Text (Text, pack, takeWhile, length, splitOn)
+import qualified Data.IntMap as IM
+-- import qualified Data.CharMap as CM
+import qualified Data.Text as T
+import Data.List (sort, unfoldr)
+import Data.List.Split (chunksOf)
+import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Matrix
 import System.Environment (getArgs)
 import Control.Monad (forM_)
+import Data.Char (toUpper)
 
 data StackSystem = StackSystem {
     stacks :: M.Map Double [Double],
@@ -21,10 +27,10 @@ data CalcError =
   | ZeroRoot
   | EmptyStack
   | UnknownCommand String
-  deriving (Show)
+  deriving (Show) 
 
-formatSysId :: Double -> Text
-formatSysId sysid = Data.Text.takeWhile (/= '.') (pack $ show sysid)
+formatSysId :: Double -> T.Text
+formatSysId sysid = T.takeWhile (/= '.') (T.pack $ show sysid)
 
 
 getStack :: Double -> StackSystem -> [Double]
@@ -107,8 +113,10 @@ matrixDeterminant mat
       d = getElem 2 2 mat
       indices = [(i, j) | i <- [1.. nrows mat], j <- [1.. ncols mat]]
 
+
 decimalPlaces :: Double -> Int
-decimalPlaces x = Data.Text.length . last $ splitOn (pack ".") (pack $ show x)
+decimalPlaces x = T.length . last $ T.splitOn (T.pack ".") (T.pack $ show x)
+
 
 hcf :: Double -> Double -> Double
 hcf a b = let 
@@ -117,11 +125,31 @@ hcf a b = let
     scaledB = round (b * scaleFactor)
     in fromIntegral ((Prelude.gcd scaledA scaledB) :: Integer) / scaleFactor
 
-putStackLn :: [Double] -> IO ()
+
+toArabic :: String -> Int
+toArabic r = foldl (\arabic pair -> arabic + abs (pair!!1 - pair!!2)) 0 (chunksOf 2 $ map (\numeral -> fromMaybe 0 $ M.lookup numeral lookupTable) paddedRoman)
+   where
+        roman = map toUpper r
+        lookupTable = M.fromList [('M', 1000), ('D', 500), ('C', 100), ('L', 50), ('X', 10), ('V', 5), ('I', 1)]
+        paddedRoman = (if length roman `mod` 2 == 0 then roman else roman ++ "#")
+
+
+toRoman :: Double -> String 
+toRoman a = foldl (++) "" $ map (\key -> fromMaybe "#" $ IM.lookup key lookupTable) (unfoldr (\acc -> if acc <= 0 then Nothing else Just let
+    next = fromMaybe 0 $ listToMaybe $ filter (\cur -> acc - cur >= 0) sortedLookupKeys
+    remaining = acc - next
+    in (next, remaining)) arabic) 
+    where
+        arabic = floor a
+        lookupTable = IM.fromList [(1000, "M"), (500, "D"), (100, "C"), (50, "L"), (10, "X"), (5, "V"), (1, "I")]
+        sortedLookupKeys = reverse $ sort $ IM.keys lookupTable
+        
+
+putStackLn :: [String] -> IO ()
 putStackLn [] = return ()
 putStackLn stack = mapM_ printItem (zip [0.. Prelude.length stack] stack)
     where
-        printItem (i, x) = printf "%i: %f\n" i x
+        printItem (i, x) = printf "%i: %s\n" i x
 
 
 add, subtract, multiply, divide, sign, swap, roll, scale, power, oroot, sroot, gcd, duplicate, determinant :: [Double] -> Either CalcError [Double]
@@ -172,7 +200,10 @@ determinant xs       = Right xs
 processCmd :: [Double] -> String -> IO [Double]
 processCmd stack cmd
     | cmd == "p" = do
-        putStackLn (reverse stack)
+        putStackLn $ reverse $ map show stack
+        return stack
+    | cmd == "pr" = do
+        putStackLn $ reverse $ map show $ map toRoman stack
         return stack
     | otherwise =
         case runCmd stack cmd of
