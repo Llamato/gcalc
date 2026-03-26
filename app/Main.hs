@@ -5,15 +5,12 @@ import Text.Read ( readMaybe )
 import Prelude hiding (subtract, error)
 import qualified Data.Map as M
 import qualified Data.IntMap as IM
--- import qualified Data.CharMap as CM
 import qualified Data.Text as T
 import Data.List (sort, unfoldr)
-import Data.List.Split (chunksOf)
 import Data.Maybe (fromMaybe, listToMaybe)
 import Data.Matrix
 import System.Environment (getArgs)
 import Control.Monad (forM_)
-import Data.Char (toUpper)
 
 data StackSystem = StackSystem {
     stacks :: M.Map Double [Double],
@@ -126,14 +123,6 @@ hcf a b = let
     in fromIntegral ((Prelude.gcd scaledA scaledB) :: Integer) / scaleFactor
 
 
-toArabic :: String -> Int
-toArabic r = foldl (\arabic pair -> arabic + abs (pair!!1 - pair!!2)) 0 (chunksOf 2 $ map (\numeral -> fromMaybe 0 $ M.lookup numeral lookupTable) paddedRoman)
-   where
-        roman = map toUpper r
-        lookupTable = M.fromList [('M', 1000), ('D', 500), ('C', 100), ('L', 50), ('X', 10), ('V', 5), ('I', 1)]
-        paddedRoman = (if length roman `mod` 2 == 0 then roman else roman ++ "#")
-
-
 toRoman :: Double -> String 
 toRoman a = foldl (++) "" $ map (\key -> fromMaybe "#" $ IM.lookup key lookupTable) (unfoldr (\acc -> if acc <= 0 then Nothing else Just let
     next = fromMaybe 0 $ listToMaybe $ filter (\cur -> acc - cur >= 0) sortedLookupKeys
@@ -243,7 +232,7 @@ processSysCmd sys cmd = let currentStack = getCurrentStack sys in
             if not (null currentStack) then
                 let
                     currentSystem = updateCurrentStack sys (drop 1 currentStack)
-                    stackId = head currentStack
+                    stackId = fromMaybe 0 $ listToMaybe currentStack
                 in
                 case cmd of
                     "switch" -> return $ Right (switchStack currentSystem stackId)
@@ -263,7 +252,7 @@ processSysCmd sys cmd = let currentStack = getCurrentStack sys in
 normalizeInput :: String -> String
 normalizeInput istr
     | null istr = istr
-    | head sstr == '.' = '0' : sstr
+    | (fromMaybe '0' $ listToMaybe sstr) == '.' = '0' : sstr
     | otherwise = sstr
     where
         sstr = replace ',' '.' istr
